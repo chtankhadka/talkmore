@@ -4,10 +4,10 @@ import (
 	"context"
 	"log"
 	"my-work/config"
+	"my-work/controllers"
 	"my-work/models"
 	"my-work/token"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,24 +22,12 @@ func Authentication(app *config.AppConfig) gin.HandlerFunc {
 		mctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// Extract Authorization header
-		authHeader := ctx.GetHeader("Authorization")
-		if authHeader == "" {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header missing"})
+		clientToken, tokenError := controllers.GetMyToken(ctx)
+		if tokenError != "" {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": tokenError})
 			ctx.Abort()
 			return
 		}
-
-		// Parse Bearer token (case-insensitive)
-		fields := strings.Fields(authHeader)
-		if len(fields) < 2 || !strings.EqualFold(fields[0], "bearer") {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization format, expected 'Bearer <token>'"})
-			ctx.Abort()
-			return
-		}
-
-		clientToken := fields[1]
-
 		// Validate token
 		claims, err := token.ValidateToken(clientToken, app)
 		if err != nil {

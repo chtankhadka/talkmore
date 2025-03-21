@@ -22,7 +22,7 @@ func GenerateTokenPair(email, uid string, app *config.AppConfig) (models.TokenPa
 		Email: email,
 		UID:   uid,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)), // 15 minutes
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(60 * time.Minute)), // 15 minutes
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    "myWork",
 		},

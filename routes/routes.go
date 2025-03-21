@@ -9,6 +9,7 @@ import (
 
 func UserRoutes(incomingRoutes *gin.RouterGroup, app *config.AppConfig) {
 	incomingRoutes.POST("/logout", controllers.Logout(app))
+	incomingRoutes.POST("/message", controllers.SendText(app))
 
 }
 
