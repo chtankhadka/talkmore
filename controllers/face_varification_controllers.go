@@ -27,8 +27,8 @@ func init() {
 		config.WithRegion(region),
 		config.WithCredentialsProvider(
 			credentials.NewStaticCredentialsProvider(
-				"AKIAQYEI5AFK4ZINPPLR",
-				"aDJmnSJ6h/6VKjJ2NQzyJAgerZZhqVPzmpBhSSzP",
+				"",
+				"",
 				"")),
 	)
 	if err != nil {
