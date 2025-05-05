@@ -32,7 +32,9 @@ type SetSignUpModel struct {
 	Created_At    time.Time          `json:"created_at" bson:"created_at"`
 	Updated_At    time.Time          `json:"updated_at" bson:"updated_at"`
 	User_ID       string             `json:"user_id" bson:"user_id"`
-	Revoked       bool               `bson:"revoked" json:"revoked"`
+	Location      *string            `json:"location" bson:"location"`
+	Revoked       bool               `json:"revoked" bson:"revoked"`
+	IsVarified    bool               `json:"is_varified" bson:"is_varified"`
 }
 
 type SigningDetails struct {

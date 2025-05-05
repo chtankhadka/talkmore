@@ -51,6 +51,7 @@ func main() {
 	authorized := router.Group("/api")
 	authorized.Use(middleware.Authentication(app))
 	routes.UserRoutes(authorized, app)
+	routes.WebSocketRoutes(authorized, app)
 
 	// Start server with graceful shutdown
 	srv := &http.Server{

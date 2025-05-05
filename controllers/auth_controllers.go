@@ -26,7 +26,7 @@ func SignUp(app *config.AppConfig) gin.HandlerFunc {
 
 		var getSignupDetails models.GetSignUpModel
 		if err := ctx.BindJSON(&getSignupDetails); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			ErrorResponse(ctx, http.StatusBadRequest, "Parsing Error", err.Error())
 			return
 		}
 
@@ -35,7 +35,7 @@ func SignUp(app *config.AppConfig) gin.HandlerFunc {
 		}
 		password, err := HashPassword(getSignupDetails.Password)
 		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			ErrorResponse(ctx, http.StatusInternalServerError, "Error In Hashing", err.Error())
 			return
 		}
 		getSignupDetails.Password = password
@@ -46,18 +46,17 @@ func SignUp(app *config.AppConfig) gin.HandlerFunc {
 
 		message := fmt.Sprintf("Hello, your OTP is %d. Please keep it confidential.", getSignupDetails.OTP)
 		if !SendMail(getSignupDetails.Email, message) {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send OTP"})
+			ErrorResponse(ctx, http.StatusInternalServerError, "Error In OTP", "Failed to Send OTP")
 			return
 		}
 		// Create TTL index on tempOtps collection (run once)
 		CreateTTLIndex(app.Client.Database("talkmore").Collection("tempData"))
 		insertTempErr := InsertTempUsers(app.Client.Database("talkmore").Collection("tempData"), getSignupDetails)
 		if insertTempErr != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save temporary user"})
+			ErrorResponse(ctx, http.StatusInternalServerError, "Temperory users", "Failed to save temporary user")
 			return
 		}
-
-		ctx.JSON(http.StatusAccepted, gin.H{"user_id": getSignupDetails.User_ID})
+		SuccessResponse(ctx, "OTP sent and Data stored in Temp", gin.H{"user_id": getSignupDetails.User_ID})
 	}
 }
 
@@ -68,7 +67,7 @@ func ValidateOtpAndSaveUser(app *config.AppConfig) gin.HandlerFunc {
 
 		var validateOTP models.ValidateOTP
 		if err := ctx.BindJSON(&validateOTP); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			ErrorResponse(ctx, http.StatusBadRequest, "Parsing Error", err.Error())
 			return
 		}
 
@@ -81,9 +80,10 @@ func ValidateOtpAndSaveUser(app *config.AppConfig) gin.HandlerFunc {
 		err := app.Client.Database("talkmore").Collection("tempData").FindOne(mctx, filter).Decode(&getSignupDetails)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
-				ctx.JSON(http.StatusNotFound, gin.H{"error": "User not found or too many attempts"})
+				ErrorResponse(ctx, http.StatusNotFound, "Not data found", err.Error())
+
 			} else {
-				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				ErrorResponse(ctx, http.StatusInternalServerError, "Something else", err.Error())
 			}
 			return
 		}
@@ -95,10 +95,10 @@ func ValidateOtpAndSaveUser(app *config.AppConfig) gin.HandlerFunc {
 				bson.M{"$inc": bson.M{"count": 1}},
 			)
 			if updateErr != nil {
-				ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update attempt count"})
+				ErrorResponse(ctx, http.StatusInternalServerError, "Failed to update attempt count", updateErr.Error())
 				return
 			}
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid OTP"})
+			ErrorResponse(ctx, http.StatusUnauthorized, "Invalid OTP", "OTP Not matched")
 			return
 		}
 
@@ -121,7 +121,7 @@ func ValidateOtpAndSaveUser(app *config.AppConfig) gin.HandlerFunc {
 		tokenPair, err := token.GenerateTokenPair(setSignUpModel.Email, setSignUpModel.User_ID, app)
 		if err != nil {
 			log.Printf("Failed to generate tokens: %v", err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+			ErrorResponse(ctx, http.StatusInternalServerError, "Failed to generate tokens", err.Error())
 			return
 		}
 
@@ -130,12 +130,11 @@ func ValidateOtpAndSaveUser(app *config.AppConfig) gin.HandlerFunc {
 
 		_, err = app.Client.Database("talkmore").Collection("users").InsertOne(mctx, setSignUpModel)
 		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save user"})
+			ErrorResponse(ctx, http.StatusInternalServerError, "Failed to save user", err.Error())
 			return
 		}
 
-		ctx.JSON(http.StatusOK, gin.H{
-			"message":       "User created successfully",
+		SuccessResponse(ctx, "User Created Successfully", gin.H{
 			"access_token":  tokenPair.AccessToken,
 			"refresh_token": tokenPair.RefreshToken,
 			"user_id":       setSignUpModel.User_ID,
@@ -150,7 +149,7 @@ func SignIn(app *config.AppConfig) gin.HandlerFunc {
 			Password string `json:"password"`
 		}
 		if err := ctx.BindJSON(&creds); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			ErrorResponse(ctx, http.StatusBadRequest, "Parsing Error", err.Error())
 			return
 		}
 
@@ -160,18 +159,18 @@ func SignIn(app *config.AppConfig) gin.HandlerFunc {
 
 		err := app.Client.Database("talkmore").Collection("users").FindOne(mctx, bson.M{"email": creds.Email}).Decode(&user)
 		if err != nil {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			ErrorResponse(ctx, http.StatusUnauthorized, "Invalid credentials", err.Error())
 			return
 		}
 
 		if !CheckPasswordHash(creds.Password, user.Password) {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			ErrorResponse(ctx, http.StatusUnauthorized, "Invalid credentials", "Password Not Matched")
 			return
 		}
 
 		tokenPair, err := token.GenerateTokenPair(user.Email, user.User_ID, app)
 		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+			ErrorResponse(ctx, http.StatusInternalServerError, "Failed to generate tokens", err.Error())
 			return
 		}
 
@@ -187,34 +186,53 @@ func SignIn(app *config.AppConfig) gin.HandlerFunc {
 			}},
 		)
 		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tokens"})
+			ErrorResponse(ctx, http.StatusInternalServerError, "Failed to update tokens", err.Error())
 			return
 		}
-
-		ctx.JSON(http.StatusOK, gin.H{
+		SuccessResponse(ctx, "Signed In Successfully", gin.H{
 			"access_token":  tokenPair.AccessToken,
 			"refresh_token": tokenPair.RefreshToken,
 			"user_id":       user.User_ID,
 		})
 	}
 }
+
+func MyProfile(app *config.AppConfig) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		mctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		clientToken, tokenError := GetMyToken(ctx)
+		if tokenError != "" {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": tokenError})
+			ctx.Abort()
+			return
+		}
+		userDetails, idError := GetMyId(mctx, app, clientToken)
+		if idError != "" {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": idError})
+			ctx.Abort()
+			return
+		}
+		SuccessResponse(ctx, "My profile", userDetails)
+	}
+}
+
 func RefreshToken(app *config.AppConfig) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var req struct {
 			RefreshToken string `json:"refresh_token" binding:"required"`
 		}
 		if err := ctx.ShouldBindJSON(&req); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Refresh token is required"})
+			ErrorResponse(ctx, http.StatusBadRequest, "Parsing Error", err.Error())
 			return
 		}
 
 		newTokenPair, err := token.RefreshTokens(req.RefreshToken, app)
 		if err != nil {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			ErrorResponse(ctx, http.StatusUnauthorized, "Token Error", err.Error())
 			return
 		}
-
-		ctx.JSON(http.StatusOK, gin.H{
+		SuccessResponse(ctx, "Token refreshed", gin.H{
 			"access_token":  newTokenPair.AccessToken,
 			"refresh_token": newTokenPair.RefreshToken,
 		})
@@ -222,23 +240,23 @@ func RefreshToken(app *config.AppConfig) gin.HandlerFunc {
 }
 
 func Logout(app *config.AppConfig) gin.HandlerFunc {
-	return func(c *gin.Context) {
+	return func(ctx *gin.Context) {
 		if !app.RequireDBCheck {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "logout not supported in stateless mode"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "logout not supported in stateless mode"})
 			return
 		}
 
-		uid := c.GetString("uid")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		uid := ctx.GetString("uid")
+		mctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, err := app.Client.Database("talkmore").Collection("users").UpdateOne(ctx, bson.M{"user_id": uid}, bson.M{
+		_, err := app.Client.Database("talkmore").Collection("users").UpdateOne(mctx, bson.M{"user_id": uid}, bson.M{
 			"$set": bson.M{"revoked": true, "updated_at": time.Now().Unix()},
 		})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to logout"})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to logout"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
+		SuccessResponse(ctx, "logged out successfully", "logged Out")
 	}
 }
 
